@@ -44,7 +44,7 @@ pub fn create_client() -> Result<Client, Box<dyn Error>> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("rust-github-contributions")
         .build()?;
-    log::info!("Initialized client with disk caching at ./cache");
+    log::debug!("Initialized client with disk caching at ./cache");
     Ok(client)
 }
 
@@ -90,7 +90,7 @@ pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date
         log::debug!("Fetching page: {}", page_url);
         let cache_key = format!("events:{}", page_url);
         let page_events: Vec<GitHubEvent> = fetch_and_cache(client, &page_url, token, &cache_key)?;
-        log::info!("Events received this page: {}", page_events.len());
+        log::debug!("Events received this page: {}", page_events.len());
         all_events.extend(page_events);
 
         let response = client.get(&page_url)
@@ -123,7 +123,7 @@ pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date
         }
     }
 
-    log::info!("Total events received: {}", all_events.len());
+    log::debug!("Total events received: {}", all_events.len());
     log::trace!("Raw events: {:?}", all_events);
     Ok(all_events)
 }

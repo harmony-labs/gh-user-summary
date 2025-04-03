@@ -93,7 +93,9 @@ pub fn print_summaries(
     start_date: DateTime<Utc>,
     end_date: DateTime<Utc>,
 ) -> Result<(), Box<dyn Error>> {
-    println!("----------------------------------------");
+    println!("# GitHub Contributions Summary\n");
+    println!("*Date Range: {} to {}*\n", start_date.format("%Y-%m-%d"), end_date.format("%Y-%m-%d"));
+
     let days_in_month = (end_date - start_date).num_days() as u32 + 1;
     log::debug!("Days in month: {}", days_in_month);
 
@@ -113,31 +115,42 @@ pub fn print_summaries(
                 let end_time = DateTime::parse_from_rfc3339(&sorted_events.last().unwrap().0.created_at)?
                     .format("%H:%M:%S UTC");
 
-                println!("\n{}:", date_str);
-                println!("Start time: {}", start_time);
-                println!("End time: {}", end_time);
-                println!("Contributions ({}):", events.len());
+                println!("## {}\n", date_str);
+                println!("- **Start Time**: {}", start_time);
+                println!("- **End Time**: {}", end_time);
+                println!("- **Contributions**: {} event(s)\n", events.len());
 
                 for (event, commits, pr_detail) in events {
-                    println!("- {}: {}", event.event_type, event.repo.name);
+                    println!("- **{}** - `{}`", event.event_type, event.repo.name);
                     if event.event_type == "PushEvent" && !commits.is_empty() {
                         for commit in commits {
-                            println!("  Commit {}: {}", commit.sha, commit.commit.message);
+                            let message_lines = commit.commit.message.split('\n');
+                            let mut first_line = true;
+                            for line in message_lines {
+                                if first_line {
+                                    println!("  - Commit `{}`: {}", commit.sha, line);
+                                    first_line = false;
+                                } else {
+                                    println!("    {}", line);
+                                }
+                            }
                         }
                     } else if event.event_type == "PullRequestEvent" && pr_detail.is_some() {
                         let pr = pr_detail.as_ref().unwrap();
                         let action = event.payload.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        println!("  PR #{}: {} (Action: {}, State: {}, Merged: {}, Link: {})",
-                            pr.number, pr.title, action, pr.state, pr.merged, pr.html_url);
+                        println!("  - PR [#{}]({}): {} (Action: {}, State: {}, Merged: {})",
+                            pr.number, pr.html_url, pr.title, action, pr.state, pr.merged);
                     } else if event.event_type == "CreateEvent" {
                         let ref_name = event.payload.get("ref").and_then(|v| v.as_str()).unwrap_or("none");
                         let ref_type = event.payload.get("ref_type").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        println!("  Created {}: {}", ref_type, ref_name);
+                        println!("  - Created {}: `{}`", ref_type, ref_name);
                     } else if event.event_type == "DeleteEvent" {
                         let ref_name = event.payload.get("ref").and_then(|v| v.as_str()).unwrap_or("none");
                         let ref_type = event.payload.get("ref_type").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        println!("  Deleted {}: {}", ref_type, ref_name);
+                        println!("  - Deleted {}: `{}`", ref_type, ref_name);
                     }
+                    // No extra details for other event types like WatchEvent, IssuesEvent
+                    println!(); // Empty line for spacing between events
                 }
             } else {
                 log::debug!("No events found for {}", date_str);
