@@ -133,6 +133,10 @@ pub fn print_summaries(
                         let ref_name = event.payload.get("ref").and_then(|v| v.as_str()).unwrap_or("none");
                         let ref_type = event.payload.get("ref_type").and_then(|v| v.as_str()).unwrap_or("unknown");
                         println!("  Created {}: {}", ref_type, ref_name);
+                    } else if event.event_type == "DeleteEvent" {
+                        let ref_name = event.payload.get("ref").and_then(|v| v.as_str()).unwrap_or("none");
+                        let ref_type = event.payload.get("ref_type").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        println!("  Deleted {}: {}", ref_type, ref_name);
                     }
                 }
             } else {
