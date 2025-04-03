@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc, Datelike, Duration, NaiveDate, TimeZone};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use reqwest::blocking::Client;
 use std::env;
@@ -14,7 +14,7 @@ struct GitHubEvent {
     #[serde(rename = "type")]
     event_type: String,
     repo: Repository,
-    payload: Value, // Generic payload to handle different event types
+    payload: Value,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -31,6 +31,15 @@ struct CommitDetail {
 #[derive(Deserialize, Debug)]
 struct CommitInfo {
     message: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct PullRequestDetail {
+    number: i32,
+    title: String,
+    body: Option<String>,
+    state: String,
+    merged: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -133,13 +142,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     log::info!("Total events received: {}", all_events.len());
     log::trace!("Raw events: {:?}", all_events);
 
-    // Filter events and fetch commit details for PushEvents
-    let mut daily_summaries: HashMap<String, Vec<(GitHubEvent, Vec<CommitDetail>)>> = HashMap::new();
+    // Filter events and fetch additional details
+    let mut daily_summaries: HashMap<String, Vec<(GitHubEvent, Vec<CommitDetail>, Option<PullRequestDetail>)>> = HashMap::new();
     log::info!("Filtering events for range {} to {}", start_date, end_date);
     for event in &all_events {
         let event_time = DateTime::parse_from_rfc3339(&event.created_at)?;
         let in_range = event_time >= start_date && event_time <= end_date;
         let mut commits = Vec::new();
+        let mut pr_detail = None;
 
         if event.event_type == "PushEvent" && in_range {
             if let Some(commits_array) = event.payload.get("commits").and_then(|v| v.as_array()) {
@@ -164,6 +174,25 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
             }
+        } else if event.event_type == "PullRequestEvent" && in_range {
+            if let Some(number) = event.payload.get("number").and_then(|v| v.as_i64()) {
+                let pr_url = format!(
+                    "https://api.github.com/repos/{}/pulls/{}",
+                    event.repo.name, number
+                );
+                let mut pr_request = client.get(&pr_url)
+                    .header("Accept", "application/vnd.github.v3+json");
+                if !token.is_empty() {
+                    pr_request = pr_request.header("Authorization", format!("Bearer {}", token));
+                }
+                let pr_response = pr_request.send()?;
+                if pr_response.status().is_success() {
+                    let pr: PullRequestDetail = pr_response.json()?;
+                    pr_detail = Some(pr);
+                } else {
+                    log::warn!("Failed to fetch PR #{}: {}", number, pr_response.status());
+                }
+            }
         }
 
         log::debug!(
@@ -177,7 +206,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             daily_summaries
                 .entry(day_key)
                 .or_insert_with(Vec::new)
-                .push((event.clone(), commits));
+                .push((event.clone(), commits, pr_detail));
         }
     }
 
@@ -197,7 +226,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             log::debug!("Checking day: {}", date_str);
             
             if let Some(events) = daily_summaries.get(&date_str) {
-                let mut sorted_events: Vec<&(GitHubEvent, Vec<CommitDetail>)> = events.iter().collect();
+                let mut sorted_events: Vec<&(GitHubEvent, Vec<CommitDetail>, Option<PullRequestDetail>)> = events.iter().collect();
                 sorted_events.sort_by(|a, b| a.0.created_at.cmp(&b.0.created_at));
                 log::debug!("Events for {}: {:?}", date_str, sorted_events);
 
@@ -211,11 +240,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("End time: {}", end_time);
                 println!("Contributions ({}):", events.len());
                 
-                for (event, commits) in events {
+                for (event, commits, pr_detail) in events {
                     println!("- {}: {}", event.event_type, event.repo.name);
                     if event.event_type == "PushEvent" && !commits.is_empty() {
                         for commit in commits {
                             println!("  Commit {}: {}", commit.sha, commit.commit.message);
+                        }
+                    } else if event.event_type == "PullRequestEvent" && pr_detail.is_some() {
+                        let pr = pr_detail.as_ref().unwrap();
+                        let action = event.payload.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        println!("  PR #{}: {} (Action: {}, State: {}, Merged: {})", 
+                            pr.number, pr.title, action, pr.state, pr.merged);
+                        if let Some(body) = &pr.body {
+                            println!("    Description: {}", body);
                         }
                     }
                 }
