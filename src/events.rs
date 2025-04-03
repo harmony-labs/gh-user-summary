@@ -127,11 +127,8 @@ pub fn print_summaries(
                     } else if event.event_type == "PullRequestEvent" && pr_detail.is_some() {
                         let pr = pr_detail.as_ref().unwrap();
                         let action = event.payload.get("action").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        println!("  PR #{}: {} (Action: {}, State: {}, Merged: {})",
-                            pr.number, pr.title, action, pr.state, pr.merged);
-                        if let Some(body) = &pr.body {
-                            println!("    Description: {}", body);
-                        }
+                        println!("  PR #{}: {} (Action: {}, State: {}, Merged: {}, Link: {})",
+                            pr.number, pr.title, action, pr.state, pr.merged, pr.html_url);
                     } else if event.event_type == "CreateEvent" {
                         let ref_name = event.payload.get("ref").and_then(|v| v.as_str()).unwrap_or("none");
                         let ref_type = event.payload.get("ref_type").and_then(|v| v.as_str()).unwrap_or("unknown");

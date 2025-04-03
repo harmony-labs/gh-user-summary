@@ -36,6 +36,7 @@ pub struct PullRequestDetail {
     pub body: Option<String>,
     pub state: String,
     pub merged: bool,
+    pub html_url: String,
 }
 
 pub fn create_client() -> Result<Client, Box<dyn Error>> {
