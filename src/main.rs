@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc, Datelike, Duration, NaiveDate, TimeZone};
 use serde::Deserialize;
+use serde_json::Value;
 use reqwest::blocking::Client;
 use std::env;
 use std::error::Error;
@@ -13,6 +14,7 @@ struct GitHubEvent {
     #[serde(rename = "type")]
     event_type: String,
     repo: Repository,
+    payload: Value, // Generic payload to handle different event types
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -20,8 +22,18 @@ struct Repository {
     name: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct CommitDetail {
+    sha: String,
+    commit: CommitInfo,
+}
+
+#[derive(Deserialize, Debug)]
+struct CommitInfo {
+    message: String,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    // Initialize logging from logging.rs
     logging::init_logging().expect("Failed to initialize logging");
     log::debug!("Starting gh-user-summary...");
 
@@ -36,7 +48,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let month_input = &args[2];
     log::info!("Processing for username: {}, month: {}", username, month_input);
 
-    // Check token
     let token = env::var("GITHUB_TOKEN").unwrap_or_default();
     if token.is_empty() {
         log::warn!("No GITHUB_TOKEN found in environment");
@@ -44,8 +55,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         log::debug!("GITHUB_TOKEN found (length: {})", token.len());
     }
 
-    // Parse date range
-    log::debug!("Parsing date range for {}", month_input);
     let naive_date = NaiveDate::parse_from_str(&format!("{}-01", month_input), "%Y-%m-%d")?;
     log::debug!("Naive date parsed: {}", naive_date);
     let start_date = Utc.from_utc_datetime(&naive_date.and_hms_opt(0, 0, 0).unwrap());
@@ -57,7 +66,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let end_date = Utc.from_utc_datetime(&(next_month - Duration::days(1)).and_hms_opt(23, 59, 59).unwrap());
     log::info!("Target range - Start: {}, End: {}", start_date, end_date);
 
-    // Build API client
     let client = Client::builder()
         .user_agent("rust-github-contributions")
         .build()?;
@@ -67,7 +75,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     log::debug!("Initial API URL: {}", initial_url);
 
-    // Fetch events with pagination
     let mut all_events: Vec<GitHubEvent> = Vec::new();
     let mut page_url = initial_url.clone();
     let mut has_next = true;
@@ -81,8 +88,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         if !token.is_empty() {
             request = request.header("Authorization", format!("Bearer {}", token));
             log::debug!("Adding Authorization header with token");
-        } else {
-            log::warn!("No token, proceeding with unauthenticated request");
         }
 
         let response = request.send()?;
@@ -95,7 +100,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Ok(());
         }
 
-        // Get headers before consuming response
         let link_header = response.headers().get("Link").map(|h| h.to_str().unwrap_or("").to_string());
         log::debug!("Link header: {:?}", link_header);
 
@@ -103,7 +107,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         log::info!("Events received this page: {}", page_events.len());
         all_events.extend(page_events);
 
-        // Check for next page
         has_next = false;
         if let Some(link_str) = link_header {
             if link_str.contains("rel=\"next\"") {
@@ -118,7 +121,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        // Stop if we've gone far enough back
         if !all_events.is_empty() {
             let oldest_time = DateTime::parse_from_rfc3339(&all_events.last().unwrap().created_at)?;
             if oldest_time < start_date {
@@ -129,17 +131,44 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     log::info!("Total events received: {}", all_events.len());
-    log::debug!("Raw events: {:?}", all_events);
+    log::trace!("Raw events: {:?}", all_events);
 
-    // Filter events
-    let mut daily_summaries: HashMap<String, Vec<GitHubEvent>> = HashMap::new();
+    // Filter events and fetch commit details for PushEvents
+    let mut daily_summaries: HashMap<String, Vec<(GitHubEvent, Vec<CommitDetail>)>> = HashMap::new();
     log::info!("Filtering events for range {} to {}", start_date, end_date);
     for event in &all_events {
         let event_time = DateTime::parse_from_rfc3339(&event.created_at)?;
         let in_range = event_time >= start_date && event_time <= end_date;
+        let mut commits = Vec::new();
+
+        if event.event_type == "PushEvent" && in_range {
+            if let Some(commits_array) = event.payload.get("commits").and_then(|v| v.as_array()) {
+                for commit in commits_array {
+                    if let Some(sha) = commit.get("sha").and_then(|v| v.as_str()) {
+                        let commit_url = format!(
+                            "https://api.github.com/repos/{}/commits/{}",
+                            event.repo.name, sha
+                        );
+                        let mut commit_request = client.get(&commit_url)
+                            .header("Accept", "application/vnd.github.v3+json");
+                        if !token.is_empty() {
+                            commit_request = commit_request.header("Authorization", format!("Bearer {}", token));
+                        }
+                        let commit_response = commit_request.send()?;
+                        if commit_response.status().is_success() {
+                            let commit_detail: CommitDetail = commit_response.json()?;
+                            commits.push(commit_detail);
+                        } else {
+                            log::warn!("Failed to fetch commit {}: {}", sha, commit_response.status());
+                        }
+                    }
+                }
+            }
+        }
+
         log::debug!(
             "Event - Time: {}, Type: {}, Repo: {}, In range: {}",
-            event_time, event.event_type, event.repo.name, in_range
+            event.created_at, event.event_type, event.repo.name, in_range
         );
         
         if in_range {
@@ -148,7 +177,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             daily_summaries
                 .entry(day_key)
                 .or_insert_with(Vec::new)
-                .push(event.clone());
+                .push((event.clone(), commits));
         }
     }
 
@@ -158,10 +187,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    // Generate summary
-    log::info!("GitHub Contributions for {} in {}", username, month_input);
     println!("----------------------------------------");
-
     let days_in_month = (end_date - start_date).num_days() as u32 + 1;
     log::debug!("Days in month: {}", days_in_month);
     for day in 1..=days_in_month {
@@ -171,13 +197,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             log::debug!("Checking day: {}", date_str);
             
             if let Some(events) = daily_summaries.get(&date_str) {
-                let mut sorted_events: Vec<&GitHubEvent> = events.iter().collect();
-                sorted_events.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+                let mut sorted_events: Vec<&(GitHubEvent, Vec<CommitDetail>)> = events.iter().collect();
+                sorted_events.sort_by(|a, b| a.0.created_at.cmp(&b.0.created_at));
                 log::debug!("Events for {}: {:?}", date_str, sorted_events);
 
-                let start_time = DateTime::parse_from_rfc3339(&sorted_events[0].created_at)?
+                let start_time = DateTime::parse_from_rfc3339(&sorted_events[0].0.created_at)?
                     .format("%H:%M:%S UTC");
-                let end_time = DateTime::parse_from_rfc3339(&sorted_events.last().unwrap().created_at)?
+                let end_time = DateTime::parse_from_rfc3339(&sorted_events.last().unwrap().0.created_at)?
                     .format("%H:%M:%S UTC");
 
                 println!("\n{}:", date_str);
@@ -185,8 +211,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("End time: {}", end_time);
                 println!("Contributions ({}):", events.len());
                 
-                for event in events {
+                for (event, commits) in events {
                     println!("- {}: {}", event.event_type, event.repo.name);
+                    if event.event_type == "PushEvent" && !commits.is_empty() {
+                        for commit in commits {
+                            println!("  Commit {}: {}", commit.sha, commit.commit.message);
+                        }
+                    }
                 }
             } else {
                 log::debug!("No events found for {}", date_str);
