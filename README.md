@@ -24,9 +24,9 @@ A lightweight Rust CLI tool to summarize your GitHub contributions over a specif
    mkdir -p ~/.ubi/bin
    echo 'export PATH="$HOME/.ubi/bin:$PATH"' >> ~/.zshrc  # or your preferred shell profile
    ```
-2. **Install vnext with ubi:**  
+2. **Install gh-user-summary with ubi:**  
    ```bash
-   ubi --project harmony-labs/vnext --in ~/.ubi/bin
+   ubi --project harmony-labs/gh-user-summary --in ~/.ubi/bin
 
 ## Usage
 
