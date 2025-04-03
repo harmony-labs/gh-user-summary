@@ -1,12 +1,7 @@
-
----
-
-### `context.md`
-```markdown
 # Context for AI Assistance
 
 ## Who I Am
-I’m Patrick Leet, a senior engineer with a focus on building software that’s simple, maintainable, and human-readable. I’ve seen enough convoluted systems to know that complexity often masks mediocrity. As E.F. Schumacher (or perhaps Einstein) said: *"Any intelligent fool can make things bigger, more complex, and more violent. It takes a touch of genius — and a lot of courage — to move in the opposite direction."* I live by this.
+A senior engineer with a focus on building software that’s simple, maintainable, and human-readable. I’ve seen enough convoluted systems to know that complexity often masks mediocrity. As E.F. Schumacher (or perhaps Einstein) said: *"Any intelligent fool can make things bigger, more complex, and more violent. It takes a touch of genius — and a lot of courage — to move in the opposite direction."* I live by this.
 
 ## My Preferences
 - **Simplicity**: Favor straightforward solutions over clever ones. If it’s hard to explain to a junior engineer, it’s probably too complex.
