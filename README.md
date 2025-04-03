@@ -1,7 +1,3 @@
-Below is a draft README for your project. Let me know if you’d like any changes before I send the file contents.
-
----
-
 # gh-user-summary
 
 A lightweight Rust CLI tool to summarize your GitHub contributions over a specified period.
