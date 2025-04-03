@@ -140,7 +140,7 @@ pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date
         }
     }
 
-    log::info!("Total pages fetched: {}", page_count);
+    log::debug!("Total pages fetched: {}", page_count);
     log::debug!("Total events received: {}", all_events.len());
     log::trace!("Raw events: {:?}", all_events);
     Ok(all_events)

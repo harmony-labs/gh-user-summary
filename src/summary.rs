@@ -11,8 +11,29 @@ pub fn print_summaries(
     println!("# GitHub Contributions Summary\n");
     println!("*Date Range: {} to {}*\n", start_date.format("%Y-%m-%d"), end_date.format("%Y-%m-%d"));
 
+    // Calculate summary stats
+    let total_events: usize = daily_summaries.values().map(|events| events.len()).sum();
+    let active_days = daily_summaries.len();
+    let mut event_types: HashMap<String, usize> = HashMap::new();
+    for events in daily_summaries.values() {
+        for (event, _, _) in events {
+            *event_types.entry(event.event_type.clone()).or_insert(0) += 1;
+        }
+    }
+
+    // Print summary
+    println!("## Summary");
+    println!("- **Total Events**: {}", total_events);
+    println!("- **Active Days**: {}", active_days);
+    let event_type_summary = event_types.iter()
+        .map(|(type_name, count)| format!("{} {}", count, type_name))
+        .collect::<Vec<String>>()
+        .join(", ");
+    println!("- **Event Types**: {}", if event_type_summary.is_empty() { "None".to_string() } else { event_type_summary });
+    println!();
+
     let days_in_month = (end_date - start_date).num_days() as u32 + 1;
-    log::debug!("Days in month: {}", days_in_month);
+    log::debug!("Days in range: {}", days_in_month);
 
     for day in 1..=days_in_month {
         let current_date = NaiveDate::from_ymd_opt(start_date.year(), start_date.month(), day);
@@ -64,7 +85,6 @@ pub fn print_summaries(
                         let ref_type = event.payload.get("ref_type").and_then(|v| v.as_str()).unwrap_or("unknown");
                         println!("  - Deleted {}: `{}`", ref_type, ref_name);
                     }
-                    // No extra details for other event types like WatchEvent, IssuesEvent
                     println!(); // Empty line for spacing between events
                 }
             } else {

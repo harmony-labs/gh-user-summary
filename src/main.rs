@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    log::info!("Target range - Start: {}, End: {}", start_date, end_date);
+    log::debug!("Target range - Start: {}, End: {}", start_date, end_date);
 
     let events = api::fetch_all_events(&client, &args.username, &token, start_date)?;
     let daily_summaries = events::process_events(&client, &token, events, start_date, end_date)?;

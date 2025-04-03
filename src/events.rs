@@ -12,7 +12,7 @@ pub fn process_events(
     start_date: DateTime<Utc>,
     end_date: DateTime<Utc>,
 ) -> Result<HashMap<String, Vec<(GitHubEvent, Vec<CommitDetail>, Option<PullRequestDetail>)>>, Box<dyn Error>> {
-    log::info!("Filtering events for range {} to {}", start_date, end_date);
+    log::debug!("Filtering events for range {} to {}", start_date, end_date);
 
     let processed: Vec<(String, (GitHubEvent, Vec<CommitDetail>, Option<PullRequestDetail>))> = events
         .par_iter()
