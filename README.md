@@ -16,20 +16,24 @@ A lightweight Rust CLI tool to summarize your GitHub contributions over a specif
 
 ## Installation
 
-Ensure you have [Rust](https://www.rust-lang.org/tools/install) and Cargo installed. Then, clone the repository and build the project:
+### Using ubi
 
-```bash
-git clone <repository-url>
-cd gh-user-summary
-cargo build --release
-```
+1. **Install ubi:**  
+   Ensure you have ubi installed by running:
+   ```bash
+   mkdir -p ~/.ubi/bin
+   echo 'export PATH="$HOME/.ubi/bin:$PATH"' >> ~/.zshrc  # or your preferred shell profile
+   ```
+2. **Install vnext with ubi:**  
+   ```bash
+   ubi --project harmony-labs/vnext --in ~/.ubi/bin
 
 ## Usage
 
 Run the binary with the following options:
 
 ```bash
-./target/release/gh-user-summary --username <GitHubUsername> [--start-date YYYY-MM-DD --end-date YYYY-MM-DD | --month YYYY-MM | --day YYYY-MM-DD]
+gh-user-summary --username <GitHubUsername> [--start-date YYYY-MM-DD --end-date YYYY-MM-DD | --month YYYY-MM | --day YYYY-MM-DD]
 ```
 
 ### Examples
@@ -37,19 +41,19 @@ Run the binary with the following options:
 - **Summarize a Month**:
 
   ```bash
-  ./target/release/gh-user-summary --username octocat --month 2023-05
+  gh-user-summary --username octocat --month 2023-05
   ```
 
 - **Summarize a Specific Day**:
 
   ```bash
-  ./target/release/gh-user-summary --username octocat --day 2023-05-15
+  gh-user-summary --username octocat --day 2023-05-15
   ```
 
 - **Summarize a Custom Date Range**:
 
   ```bash
-  ./target/release/gh-user-summary --username octocat --start-date 2023-05-01 --end-date 2023-05-31
+  gh-user-summary --username octocat --start-date 2023-05-01 --end-date 2023-05-31
   ```
 
 ## Configuration
