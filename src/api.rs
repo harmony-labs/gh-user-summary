@@ -85,9 +85,11 @@ pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date
     let initial_url = format!("https://api.github.com/users/{}/events?per_page=100", username);
     let mut page_url = initial_url.clone();
     let mut has_next = true;
+    let mut page_count = 0;
 
     while has_next {
-        log::debug!("Fetching page: {}", page_url);
+        page_count += 1;
+        log::debug!("Fetching page {}: {}", page_count, page_url);
         let cache_key = format!("events:{}", page_url);
         let page_events: Vec<GitHubEvent> = fetch_and_cache(client, &page_url, token, &cache_key)?;
         log::debug!("Events received this page: {}", page_events.len());
@@ -98,7 +100,7 @@ pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date
             .header("Authorization", format!("Bearer {}", token))
             .send()?;
         let link_header = response.headers().get("Link").map(|h| h.to_str().unwrap_or("").to_string());
-        log::debug!("Link header: {:?}", link_header);
+        log::debug!("Link header for page {}: {:?}", page_count, link_header);
 
         has_next = false;
         if let Some(link_str) = link_header {
@@ -112,17 +114,33 @@ pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date
                     has_next = true;
                 }
             }
+            // Check if we’ve reached the last page
+            if !link_str.contains("rel=\"last\"") && all_events.len() >= 300 && !has_next {
+                log::warn!(
+                    "Fetched 300 events across {} pages, but no 'last' link found. Data might be truncated.",
+                    page_count
+                );
+            }
         }
 
         if !all_events.is_empty() {
             let oldest_time = DateTime::parse_from_rfc3339(&all_events.last().unwrap().created_at)?;
-            if oldest_time < start_date {
-                log::debug!("Oldest event ({}) is before start date, stopping fetch", oldest_time);
+            if oldest_time < start_date && has_next {
+                log::debug!(
+                    "Oldest event ({}) is before start date ({}), but more pages exist. Continuing fetch.",
+                    oldest_time, start_date
+                );
+            } else if oldest_time < start_date {
+                log::debug!(
+                    "Oldest event ({}) is before start date ({}), stopping fetch.",
+                    oldest_time, start_date
+                );
                 break;
             }
         }
     }
 
+    log::info!("Total pages fetched: {}", page_count);
     log::debug!("Total events received: {}", all_events.len());
     log::trace!("Raw events: {:?}", all_events);
     Ok(all_events)
