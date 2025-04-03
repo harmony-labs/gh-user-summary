@@ -11,7 +11,7 @@ pub fn print_summaries(
     println!("# GitHub Contributions Summary\n");
     println!("*Date Range: {} to {}*\n", start_date.format("%Y-%m-%d"), end_date.format("%Y-%m-%d"));
 
-    // Calculate summary stats
+    // Calculate overall summary stats
     let total_events: usize = daily_summaries.values().map(|events| events.len()).sum();
     let active_days = daily_summaries.len();
     let mut event_types: HashMap<String, usize> = HashMap::new();
@@ -21,7 +21,7 @@ pub fn print_summaries(
         }
     }
 
-    // Print summary
+    // Print overall summary
     println!("## Summary");
     println!("- **Total Events**: {}", total_events);
     println!("- **Active Days**: {}", active_days);
@@ -51,10 +51,22 @@ pub fn print_summaries(
                 let end_time = DateTime::parse_from_rfc3339(&sorted_events.last().unwrap().0.created_at)?
                     .format("%H:%M:%S UTC");
 
+                // Calculate daily event type counts
+                let mut daily_event_types: HashMap<String, usize> = HashMap::new();
+                for (event, _, _) in events {
+                    *daily_event_types.entry(event.event_type.clone()).or_insert(0) += 1;
+                }
+                let daily_event_summary = daily_event_types.iter()
+                    .map(|(type_name, count)| format!("{} {}", count, type_name))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
                 println!("## {}\n", date_str);
                 println!("- **Start Time**: {}", start_time);
                 println!("- **End Time**: {}", end_time);
-                println!("- **Contributions**: {} event(s)\n", events.len());
+                println!("- **Contributions**: {} event(s)", events.len());
+                println!("- **Event Types**: {}", daily_event_summary);
+                println!();
 
                 for (event, commits, pr_detail) in events {
                     println!("- **{}** - `{}`", event.event_type, event.repo.name);
