@@ -4,6 +4,7 @@ use std::error::Error;
 mod api;
 mod events;
 mod logging;
+mod summary;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Summarize GitHub contributions", long_about = None)]
@@ -84,11 +85,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    log::debug!("Target range - Start: {}, End: {}", start_date, end_date);
+    log::info!("Target range - Start: {}, End: {}", start_date, end_date);
 
     let events = api::fetch_all_events(&client, &args.username, &token, start_date)?;
     let daily_summaries = events::process_events(&client, &token, events, start_date, end_date)?;
-    events::print_summaries(daily_summaries, start_date, end_date)?;
+    summary::print_summaries(daily_summaries, start_date, end_date)?;
 
     Ok(())
 }
