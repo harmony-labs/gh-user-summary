@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc, NaiveDate, Datelike};
 use reqwest::blocking::Client;
 use std::collections::HashMap;
 use std::error::Error;
-use rayon::prelude::*; // Added for parallel iteration
+use rayon::prelude::*;
 use crate::api::{GitHubEvent, CommitDetail, PullRequestDetail, fetch_commit_detail, fetch_pr_detail};
 
 pub fn process_events(
@@ -14,7 +14,6 @@ pub fn process_events(
 ) -> Result<HashMap<String, Vec<(GitHubEvent, Vec<CommitDetail>, Option<PullRequestDetail>)>>, Box<dyn Error>> {
     log::info!("Filtering events for range {} to {}", start_date, end_date);
 
-    // Process events in parallel and collect into a Vec
     let processed: Vec<(String, (GitHubEvent, Vec<CommitDetail>, Option<PullRequestDetail>))> = events
         .par_iter()
         .filter_map(|event| {
@@ -74,7 +73,6 @@ pub fn process_events(
         })
         .collect();
 
-    // Build the HashMap from parallel results
     let mut daily_summaries: HashMap<String, Vec<(GitHubEvent, Vec<CommitDetail>, Option<PullRequestDetail>)>> = HashMap::new();
     for (day_key, event_data) in processed {
         daily_summaries
@@ -134,6 +132,10 @@ pub fn print_summaries(
                         if let Some(body) = &pr.body {
                             println!("    Description: {}", body);
                         }
+                    } else if event.event_type == "CreateEvent" {
+                        let ref_name = event.payload.get("ref").and_then(|v| v.as_str()).unwrap_or("none");
+                        let ref_type = event.payload.get("ref_type").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        println!("  Created {}: {}", ref_type, ref_name);
                     }
                 }
             } else {
