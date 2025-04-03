@@ -1,8 +1,9 @@
 use chrono::{DateTime, Utc};
-use reqwest::blocking::{Client, ClientBuilder};
+use reqwest::blocking::Client;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, to_vec, from_slice};
 use std::error::Error;
+use cacache;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GitHubEvent {
@@ -40,10 +41,43 @@ pub struct PullRequestDetail {
 }
 
 pub fn create_client() -> Result<Client, Box<dyn Error>> {
-    let client = ClientBuilder::new()
+    let client = reqwest::blocking::Client::builder()
         .user_agent("rust-github-contributions")
         .build()?;
+    log::info!("Initialized client with disk caching at ./cache");
     Ok(client)
+}
+
+fn fetch_and_cache<T: serde::de::DeserializeOwned>(client: &Client, url: &str, token: &str, cache_key: &str) -> Result<T, Box<dyn Error>> {
+    let cache_dir = "./.cache";
+
+    // Check cache first
+    if let Ok(cached_data) = cacache::read_sync(cache_dir, cache_key) {
+        let result: T = from_slice(&cached_data)?;
+        log::debug!("Cache hit for {}", url);
+        return Ok(result);
+    }
+
+    // Fetch from API
+    let mut request = client.get(url)
+        .header("Accept", "application/vnd.github.v3+json");
+    if !token.is_empty() {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+    let response = request.send()?;
+    if !response.status().is_success() {
+        log::error!("API request failed for {}: {}", url, response.status());
+        let error_body = response.text()?;
+        log::error!("Error response body: {:?}", error_body);
+        return Err("API request failed".into());
+    }
+
+    // Cache the response
+    let bytes = response.bytes()?;
+    let result: T = from_slice(&bytes)?;
+    cacache::write_sync(cache_dir, cache_key, &bytes)?;
+    log::debug!("Fetched and cached {}", url);
+    Ok(result)
 }
 
 pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date: DateTime<Utc>) -> Result<Vec<GitHubEvent>, Box<dyn Error>> {
@@ -54,30 +88,17 @@ pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date
 
     while has_next {
         log::debug!("Fetching page: {}", page_url);
-        let mut request = client.get(&page_url)
-            .header("Accept", "application/vnd.github.v3+json");
-        
-        if !token.is_empty() {
-            request = request.header("Authorization", format!("Bearer {}", token));
-            log::debug!("Adding Authorization header with token");
-        }
-
-        let response = request.send()?;
-        log::debug!("Response status: {}", response.status());
-
-        if !response.status().is_success() {
-            log::error!("API request failed with status: {}", response.status());
-            let error_body = response.text()?;
-            log::error!("Error response body: {:?}", error_body);
-            return Err("API request failed".into());
-        }
-
-        let link_header = response.headers().get("Link").map(|h| h.to_str().unwrap_or("").to_string());
-        log::debug!("Link header: {:?}", link_header);
-
-        let page_events: Vec<GitHubEvent> = response.json()?;
+        let cache_key = format!("events:{}", page_url);
+        let page_events: Vec<GitHubEvent> = fetch_and_cache(client, &page_url, token, &cache_key)?;
         log::info!("Events received this page: {}", page_events.len());
         all_events.extend(page_events);
+
+        let response = client.get(&page_url)
+            .header("Accept", "application/vnd.github.v3+json")
+            .header("Authorization", format!("Bearer {}", token))
+            .send()?;
+        let link_header = response.headers().get("Link").map(|h| h.to_str().unwrap_or("").to_string());
+        log::debug!("Link header: {:?}", link_header);
 
         has_next = false;
         if let Some(link_str) = link_header {
@@ -109,34 +130,12 @@ pub fn fetch_all_events(client: &Client, username: &str, token: &str, start_date
 
 pub fn fetch_commit_detail(client: &Client, token: &str, repo: &str, sha: &str) -> Result<CommitDetail, Box<dyn Error>> {
     let commit_url = format!("https://api.github.com/repos/{}/commits/{}", repo, sha);
-    let mut request = client.get(&commit_url)
-        .header("Accept", "application/vnd.github.v3+json");
-    if !token.is_empty() {
-        request = request.header("Authorization", format!("Bearer {}", token));
-    }
-    let response = request.send()?;
-    if response.status().is_success() {
-        let commit_detail: CommitDetail = response.json()?;
-        Ok(commit_detail)
-    } else {
-        log::warn!("Failed to fetch commit {}: {}", sha, response.status());
-        Err(format!("Failed to fetch commit: {}", response.status()).into())
-    }
+    let cache_key = format!("commit:{}:{}", repo, sha);
+    fetch_and_cache(client, &commit_url, token, &cache_key)
 }
 
 pub fn fetch_pr_detail(client: &Client, token: &str, repo: &str, number: i64) -> Result<PullRequestDetail, Box<dyn Error>> {
     let pr_url = format!("https://api.github.com/repos/{}/pulls/{}", repo, number);
-    let mut request = client.get(&pr_url)
-        .header("Accept", "application/vnd.github.v3+json");
-    if !token.is_empty() {
-        request = request.header("Authorization", format!("Bearer {}", token));
-    }
-    let response = request.send()?;
-    if response.status().is_success() {
-        let pr_detail: PullRequestDetail = response.json()?;
-        Ok(pr_detail)
-    } else {
-        log::warn!("Failed to fetch PR #{}: {}", number, response.status());
-        Err(format!("Failed to fetch PR: {}", response.status()).into())
-    }
+    let cache_key = format!("pr:{}:{}", repo, number);
+    fetch_and_cache(client, &pr_url, token, &cache_key)
 }

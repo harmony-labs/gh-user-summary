@@ -20,3 +20,5 @@ Cargo.lock  # Optional: include this if you’re building a binary, exclude for 
 # OS-specific files
 .DS_Store
 Thumbs.db
+
+.cache/
